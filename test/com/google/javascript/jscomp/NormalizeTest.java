@@ -222,7 +222,7 @@ public final class NormalizeTest extends CompilerTestCase {
 
   @Test
   public void testConstRHSPropagation() {
-    testSame(lines("const obj = function inner() {inner();};"));
+    testSame("const obj = function inner() {inner();};");
     Node root = getLastCompiler().getRoot();
     Node scriptNode =
         root.getLastChild() // ROOT of input sources
@@ -240,7 +240,7 @@ public final class NormalizeTest extends CompilerTestCase {
 
   @Test
   public void testConstRHSPropagation2() {
-    testSame(lines("/** @const */ var obj = function inner() {inner();};"));
+    testSame("/** @const */ var obj = function inner() {inner();};");
     Node root = getLastCompiler().getRoot();
     Node scriptNode =
         root.getLastChild() // ROOT of input sources
@@ -1062,8 +1062,10 @@ public final class NormalizeTest extends CompilerTestCase {
             "function bar() {let a; let a$jscomp$1; a + a$jscomp$1;}"),
         expected(
             "function foo() {var a; a;}",
-            "function bar() {let a$jscomp$1; let a$jscomp$1$jscomp$1; a$jscomp$1 +"
-                + " a$jscomp$1$jscomp$1;}"));
+            """
+            function bar() {let a$jscomp$1; let a$jscomp$1$jscomp$1; a$jscomp$1 +
+             a$jscomp$1$jscomp$1;}
+            """));
 
     test(
         srcs("var a;", "import {a as a} from './foo.js'; let b = a;"),

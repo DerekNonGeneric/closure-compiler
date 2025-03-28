@@ -19,7 +19,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
-import static com.google.javascript.jscomp.CompilerTestCase.lines;
 import static com.google.javascript.jscomp.testing.JSErrorSubject.assertError;
 import static com.google.javascript.rhino.testing.NodeSubject.assertNode;
 import static java.nio.charset.StandardCharsets.US_ASCII;
@@ -160,11 +159,13 @@ public final class CommandLineRunnerTest {
   public void testStage1ErrorExitStatus() throws Exception {
     // Create an input file
     File srcFile = temporaryFolder.newFile("input.js");
-    writeLinesToFile(
+    writeFile(
         srcFile,
         // Intentionally incorrect type to generate a compiler error
-        "/** @type {undefined} */",
-        "const x = 1;");
+        """
+        /** @type {undefined} */
+        const x = 1;
+        """);
 
     // Create a path for the stage 1 output
     File stage1Save = temporaryFolder.newFile("stage1.save");
@@ -189,41 +190,45 @@ public final class CommandLineRunnerTest {
 
     // Create a message bundle to use
     File msgBundle = temporaryFolder.newFile("messages.xtb");
-    final ImmutableList<String> lines =
-        ImmutableList.of(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
-            "<!DOCTYPE translationbundle SYSTEM \"translationbundle.dtd\">",
-            "<translationbundle lang=\"es\">",
-            "<translation id=\"6289482750305328564\">hola</translation>",
-            "</translationbundle>",
-            "");
-    writeLinesToFile(msgBundle, lines);
+    writeFile(
+        msgBundle,
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE translationbundle SYSTEM "translationbundle.dtd">
+        <translationbundle lang="es">
+        <translation id="6289482750305328564">hola</translation>
+        </translationbundle>
+        """);
 
     // Create test externs with a definition for goog.getMsg().
     final File externsFile = temporaryFolder.newFile("externs.js");
-    writeLinesToFile(
+    writeFile(
         externsFile,
-        "/**",
-        " * @fileoverview test externs",
-        " * @externs",
-        " */",
-        "var goog = {};",
-        "/**",
-        " * @nosideeffects",
-        " * @param {string} msg",
-        " * @param {Object=} placeholderReplacements",
-        " * @param {Object=} options",
-        " * @return {string}",
-        " */",
-        "goog.getMsg = function(msg, placeholderReplacements, options) {};");
+        """
+        /**
+         * @fileoverview test externs
+         * @externs
+         */
+        var goog = {};
+        /**
+         * @nosideeffects
+         * @param {string} msg
+         * @param {Object=} placeholderReplacements
+         * @param {Object=} options
+         * @return {string}
+         */
+        goog.getMsg = function(msg, placeholderReplacements, options) {};
+        """);
 
     // Create an input file
     File srcFile = temporaryFolder.newFile("input.js");
-    writeLinesToFile(
+    writeFile(
         srcFile,
-        "/** @desc greeting */",
-        "const MSG_HELLO = goog.getMsg('hello');",
-        "console.log(MSG_HELLO);");
+        """
+        /** @desc greeting */
+        const MSG_HELLO = goog.getMsg('hello');
+        console.log(MSG_HELLO);
+        """);
 
     // Create a path for the stage 1 output
     File stage1Save = temporaryFolder.newFile("stage1.save");
@@ -348,15 +353,11 @@ public final class CommandLineRunnerTest {
 
   private ImmutableList<String> createStringList(
       Iterable<String> someStrings, String[] additionalStrings) {
-    return (ImmutableList.<String>builder().addAll(someStrings).add(additionalStrings)).build();
+    return ImmutableList.<String>builder().addAll(someStrings).add(additionalStrings).build();
   }
 
-  private void writeLinesToFile(File file, String... lines) throws IOException {
-    writeLinesToFile(file, ImmutableList.copyOf(lines));
-  }
-
-  private void writeLinesToFile(File file, Iterable<String> lines) throws IOException {
-    java.nio.file.Files.write(file.toPath(), lines, UTF_8);
+  private void writeFile(File file, String content) throws IOException {
+    java.nio.file.Files.write(file.toPath(), content.getBytes(UTF_8));
   }
 
   @Test
@@ -513,17 +514,29 @@ public final class CommandLineRunnerTest {
     args.add("--compilation_level=ADVANCED_OPTIMIZATIONS");
     args.add("--jscomp_off=checkVars");
     test(
-        "/** @constructor */"
-            + "function Foo() {}"
-            + "Foo.prototype.handle = function(x, y) { alert(y); };"
-            + "var x = goog.reflect.object(Foo, {handle: 1});"
-            + "for (var i in x) { x[i].call(x); }"
-            + "window['Foo'] = Foo;",
-        "function a() {}"
-            + "a.prototype.a = function(e, d) { alert(d); };"
-            + "var b = goog.c.b(a, {a: 1}),c;"
-            + "for (c in b) { b[c].call(b); }"
-            + "window.Foo = a;");
+        """
+        /** @constructor */
+        function Foo() {}
+        Foo.prototype.handle = function(x, y) {
+          alert(y);
+        };
+        var x = goog.reflect.object(Foo, {handle: 1});
+        for (var i in x) {
+          x[i].call(x);
+        }
+        window['Foo'] = Foo;
+        """,
+        """
+        function a() {}
+        a.prototype.a = function(e, d) {
+          alert(d);
+        };
+        var b = goog.c.b(a, {a: 1}), c;
+        for (c in b) {
+          b[c].call(b);
+        }
+        window.Foo = a;
+        """);
   }
 
   @Test
@@ -534,22 +547,26 @@ public final class CommandLineRunnerTest {
     // method call (which has side-effects) but "c" is inlined (which can't be
     // modified by the call).
     test(
-        "/** @constructor */ function F() { this.a = 0; }"
-            + "F.prototype.inc = function() { this.a++; return 10; };"
-            + "F.prototype.bar = function() { "
-            + "  var c = 3; var val = this.inc(); this.a += val + c;"
-            + "};"
-            + "window['f'] = new F();"
-            + "window['f']['inc'] = window['f'].inc;"
-            + "window['f']['bar'] = window['f'].bar;"
-            + "use(window['f'].a)",
-        "function a(){ this.a = 0; }"
-            + "a.prototype.b = function(){ this.a++; return 10; };"
-            + "a.prototype.c = function(){ var b=this.b(); this.a += b + 3; };"
-            + "window.f = new a;"
-            + "window.f.inc = window.f.b;"
-            + "window.f.bar = window.f.c;"
-            + "use(window.f.a);");
+        """
+        /** @constructor */ function F() { this.a = 0; }
+        F.prototype.inc = function() { this.a++; return 10; };
+        F.prototype.bar = function() {
+          var c = 3; var val = this.inc(); this.a += val + c;
+        };
+        window['f'] = new F();
+        window['f']['inc'] = window['f'].inc;
+        window['f']['bar'] = window['f'].bar;
+        use(window['f'].a)
+        """,
+        """
+        function a(){ this.a = 0; }
+        a.prototype.b = function(){ this.a++; return 10; };
+        a.prototype.c = function(){ var b=this.b(); this.a += b + 3; };
+        window.f = new a;
+        window.f.inc = window.f.b;
+        window.f.bar = window.f.c;
+        use(window.f.a);
+        """);
   }
 
   @Test
@@ -693,10 +710,12 @@ public final class CommandLineRunnerTest {
     args.add("-D");
     args.add("DDD");
     test(
-        "/** @define {boolean} */ var FOO = false;"
-            + "/** @define {number} */ var BAR = 3;"
-            + "/** @define {boolean} */ var CCC = false;"
-            + "/** @define {boolean} */ var DDD = false;",
+        """
+        /** @define {boolean} */ var FOO = false;
+        /** @define {number} */ var BAR = 3;
+        /** @define {boolean} */ var CCC = false;
+        /** @define {boolean} */ var DDD = false;
+        """,
         "var FOO = !0, BAR = 5, CCC = !0, DDD = !0;");
   }
 
@@ -867,14 +886,20 @@ public final class CommandLineRunnerTest {
   @Test
   public void testGetMsgWiring() {
     test(
-        "var goog = {}; goog.getMsg = function(x) { return x; };"
-            + "/** @desc A real foo. */ var MSG_FOO = goog.getMsg('foo');",
-        "var goog={getMsg:function(a){return a}}, " + "MSG_FOO=goog.getMsg('foo');");
+        """
+        var goog = {}; goog.getMsg = function(x) { return x; };
+        /** @desc A real foo. */ var MSG_FOO = goog.getMsg('foo');
+        """,
+        """
+        var goog={getMsg:function(a){return a}}, MSG_FOO=goog.getMsg('foo');
+        """);
     args.add("--compilation_level=ADVANCED_OPTIMIZATIONS");
     test(
-        "var goog = {}; goog.getMsg = function(x) { return x; };"
-            + "/** @desc A real foo. */ var MSG_FOO = goog.getMsg('foo');"
-            + "window['foo'] = MSG_FOO;",
+        """
+        var goog = {}; goog.getMsg = function(x) { return x; };
+        /** @desc A real foo. */ var MSG_FOO = goog.getMsg('foo');
+        window['foo'] = MSG_FOO;
+        """,
         "window.foo = 'foo';");
   }
 
@@ -887,19 +912,23 @@ public final class CommandLineRunnerTest {
   @Test
   public void testCssNameWiring() {
     test(
-        "var goog = {}; goog.getCssName = function() {};"
-            + "goog.setCssNameMapping = function() {};"
-            + "goog.setCssNameMapping({'goog': 'a', 'button': 'b'});"
-            + "var a = goog.getCssName('goog-button');"
-            + "var b = goog.getCssName('css-button');"
-            + "var c = goog.getCssName('goog-menu');"
-            + "var d = goog.getCssName('css-menu');",
-        "var goog = { getCssName: function() {},"
-            + "             setCssNameMapping: function() {} },"
-            + "    a = 'a-b',"
-            + "    b = 'css-b',"
-            + "    c = 'a-menu',"
-            + "    d = 'css-menu';");
+        """
+        var goog = {}; goog.getCssName = function() {};
+        goog.setCssNameMapping = function() {};
+        goog.setCssNameMapping({'goog': 'a', 'button': 'b'});
+        var a = goog.getCssName('goog-button');
+        var b = goog.getCssName('css-button');
+        var c = goog.getCssName('goog-menu');
+        var d = goog.getCssName('css-menu');
+        """,
+        """
+        var goog = { getCssName: function() {},
+                     setCssNameMapping: function() {} },
+            a = 'a-b',
+            b = 'css-b',
+            c = 'a-menu',
+            d = 'css-menu';
+        """);
   }
 
   @Test
@@ -929,28 +958,36 @@ public final class CommandLineRunnerTest {
     args.add("--strict_mode_input=false");
     args.add("--warning_level=VERBOSE");
     test(
-        "function f() { "
-            + "  var arguments = Array.prototype.slice.call(arguments, 0);"
-            + "  return arguments[0]; "
-            + "}",
-        "function f() { "
-            + "  arguments = Array.prototype.slice.call(arguments, 0);"
-            + "  return arguments[0]; "
-            + "}");
+        """
+        function f() {
+          var arguments = Array.prototype.slice.call(arguments, 0);
+          return arguments[0];
+        }
+        """,
+        """
+        function f() {
+          arguments = Array.prototype.slice.call(arguments, 0);
+          return arguments[0];
+        }
+        """);
   }
 
   @Test
   public void testIssue297() {
     args.add("--compilation_level=SIMPLE_OPTIMIZATIONS");
     test(
-        "function f(p) {"
-            + " var x;"
-            + " return ((x=p.id) && (x=parseInt(x.substr(1)))) && x>0;"
-            + "}",
-        "function f(b) {"
-            + " var a;"
-            + " return ((a=b.id) && (a=parseInt(a.substr(1)))) && a>0;"
-            + "}");
+        """
+        function f(p) {
+          var x;
+          return ((x=p.id) && (x=parseInt(x.substr(1)))) && x>0;
+        }
+        """,
+        """
+        function f(b) {
+          var a;
+          return ((a=b.id) && (a=parseInt(a.substr(1)))) && a>0;
+        }
+        """);
   }
 
   @Test
@@ -1002,22 +1039,21 @@ public final class CommandLineRunnerTest {
   public void testSideEffectIntegration() {
     args.add("--compilation_level=ADVANCED_OPTIMIZATIONS");
     test(
-        "/** @constructor */"
-            + "var Foo = function() {};"
-            + "Foo.prototype.blah = function() {"
-            + "  Foo.bar_(this)"
-            + "};"
-            + "Foo.bar_ = function(f) {"
-            + "  f.x = 5;"
-            + "};"
-            + "var y = new Foo();"
-            + "Foo.bar_({});"
-            +
-
-            // We used to strip this too
-            // due to bad side-effect propagation.
-            "y.blah();"
-            + "alert(y);",
+        """
+        /** @constructor */
+        var Foo = function() {};
+        Foo.prototype.blah = function() {
+          Foo.bar_(this)
+        };
+        Foo.bar_ = function(f) {
+          f.x = 5;
+        };
+        var y = new Foo();
+        Foo.bar_({});
+        // We used to strip this too due to bad side-effect propagation.
+        y.blah();
+        alert(y);
+        """,
         "var a = new function(){}; a.a = 5; alert(a);");
   }
 
@@ -1041,7 +1077,11 @@ public final class CommandLineRunnerTest {
     args.add("--warning_level=QUIET");
     args.add("--debug=false");
     test(
-        "function Foo() {}" + "Foo.x = 1;" + "function f() {throw new Foo().x;} f();",
+        """
+        function Foo() {}
+        Foo.x = 1;
+        function f() {throw new Foo().x;} f();
+        """,
         "throw (new function() {}).a;");
   }
 
@@ -1051,7 +1091,11 @@ public final class CommandLineRunnerTest {
     args.add("--warning_level=QUIET");
     args.add("--debug=true");
     test(
-        "function Foo() {}" + "Foo.x = 1;" + "function f() {throw new Foo().x;} f();",
+        """
+        function Foo() {}
+        Foo.x = 1;
+        function f() {throw new Foo().x;} f();
+        """,
         "throw (new function() {}).$x$;");
   }
 
@@ -1283,10 +1327,11 @@ public final class CommandLineRunnerTest {
     args.add("--warning_level=VERBOSE");
     test(
         new String[] {
-          lines(
-              "/** @externs */", //
-              "var externVar;",
-              new TestExternsBuilder().addClosureExterns().build()),
+          """
+          /** @externs */
+          var externVar;
+          """
+              + new TestExternsBuilder().addClosureExterns().build(),
           """
           goog.provide('scotch');
           var x = externVar;
@@ -1974,8 +2019,10 @@ public final class CommandLineRunnerTest {
     args.add("--generate_exports=true");
     test(
         "var goog; /** @export */ foo.prototype.x = function() {};",
-        "var goog; foo.prototype.x=function(){};"
-            + "goog.exportProperty(foo.prototype,\"x\",foo.prototype.x);");
+        """
+        var goog; foo.prototype.x=function(){};
+        goog.exportProperty(foo.prototype,"x",foo.prototype.x);
+        """);
   }
 
   @Test
@@ -2132,7 +2179,7 @@ public final class CommandLineRunnerTest {
     setFilename(1, "package.json");
     test(
         new String[] {
-          lines("const /** string */ typeError = 0;"),
+          "const /** string */ typeError = 0;",
           """
           {
             "name": "test"
@@ -2555,12 +2602,14 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"alert(\\\"foo\\\");\\n\","
-                + "\"path\":\"compiled.js\",\"source_map\":\"{\\n\\\"version\\\":3,"
-                + "\\n\\\"file\\\":\\\"compiled.js\\\",\\n\\\"lineCount\\\":1,"
-                + "\\n\\\"mappings\\\":\\\"AAAAA,KAAA,CAAM,KAAN;\\\","
-                + "\\n\\\"sources\\\":[\\\"stdin\\\"],"
-                + "\\n\\\"names\\\":[\\\"alert\\\"]\\n}\\n\"}]");
+            """
+            [{"src":"alert(\\"foo\\");\\n",\
+            "path":"compiled.js",\"source_map":"{\\n\\"version\\":3,\
+            \\n\\"file\\":\\"compiled.js\\",\\n\\"lineCount\\":1,\
+            \\n\\"mappings\\":\\"AAAAA,KAAA,CAAM,KAAN;\\",\
+            \\n\\"sources\\":[\\"stdin\\"],\
+            \\n\\"names\\":[\\"alert\\"]\\n}\\n"}]\
+            """);
   }
 
   @Test
@@ -2586,34 +2635,39 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"alert(\\\"foo\\\");\\n\","
-                + "\"path\":\"bar.js\",\"source_map\":\"{\\n\\\"version\\\":3,"
-                + "\\n\\\"file\\\":\\\"bar.js\\\",\\n\\\"lineCount\\\":1,"
-                + "\\n\\\"mappings\\\":\\\"AAAAA,KAAA,CAAM,KAAN;\\\","
-                + "\\n\\\"sources\\\":[\\\"foo.js\\\"],"
-                + "\\n\\\"names\\\":[\\\"alert\\\"]\\n}\\n\"}]");
+            """
+            [{"src":"alert(\\"foo\\");\\n",\
+            "path":"bar.js","source_map":"{\\n\\"version\\":3,\
+            \\n\\"file\\":\\"bar.js\\",\\n\\"lineCount\\":1,\
+            \\n\\"mappings\\":\\"AAAAA,KAAA,CAAM,KAAN;\\",\
+            \\n\\"sources\\":[\\"foo.js\\"],\
+            \\n\\"names\\":[\\"alert\\"]\\n}\\n"}]\
+            """);
   }
 
   @Test
   public void testJsonStreamSourceMap() {
     String inputSourceMap =
-        "{\n"
-            + "\"version\":3,\n"
-            + "\"file\":\"one.out.js\",\n"
-            + "\"lineCount\":1,\n"
-            + "\"mappings\":\"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,"
-            + "OAAAF,IAAA,CAAYC,CAAZ,CADc,CAGhBD,GAAA,CAAI,QAAJ;\",\n"
-            + "\"sources\":[\"one.js\"],\n"
-            + "\"names\":[\"log\",\"a\",\"console\"]\n"
-            + "}";
+        """
+        {\n\
+        "version":3,\n\
+        "file":"one.out.js",\n\
+        "lineCount":1,\n\
+        "mappings":"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,\
+        OAAAF,IAAA,CAAYC,CAAZ,CADc,CAGhBD,GAAA,CAAI,QAAJ;",\n\
+        "sources":["one.js"],\n\
+        "names":["log","a","console"]\n\
+        }\
+        """;
     inputSourceMap = inputSourceMap.replace("\"", "\\\"");
     String inputString =
-        "[{"
-            + "\"src\": \"function log(a){console.log(a)}log(\\\"one.js\\\");\", "
-            + "\"path\":\"one.out.js\", "
-            + "\"sourceMap\": \""
-            + inputSourceMap
-            + "\" }]";
+        """
+        [{\
+        "src": "function log(a){console.log(a)}log(\\"one.js\\");", \
+        "path":"one.out.js", \
+        "sourceMap": "INPUT_SOURCE_MAP" }]\
+        """
+            .replace("INPUT_SOURCE_MAP", inputSourceMap);
     args.add("--json_streams=BOTH");
     args.add("--js_output_file=bar.js");
     args.add("--apply_input_source_maps");
@@ -2635,40 +2689,45 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"function log(a){console.log(a)}log(\\\"one.js\\\");\\n"
-                + "\",\"path\":\"bar.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"bar.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,"
-                + "OAAAF,CAAAA,GAAAE,CAAYD,CAAZC,CADc,CAGhBF,GAAAA,CAAI,QAAJA;\\\",\\n"
-                + "\\\"sources\\\":[\\\"one.js\\\"],\\n"
-                + "\\\"names\\\":[\\\"log\\\",\\\"a\\\",\\\"console\\\"]\\n"
-                + "}\\n"
-                + "\"}]");
+            """
+            [{"src":"function log(a){console.log(a)}log(\\"one.js\\");\\n\
+            ","path":"bar.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"bar.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,\
+            OAAAF,CAAAA,GAAAE,CAAYD,CAAZC,CADc,CAGhBF,GAAAA,CAAI,QAAJA;\\",\\n\
+            \\"sources\\":[\\"one.js\\"],\\n\
+            \\"names\\":[\\"log\\",\\"a\\",\\"console\\"]\\n\
+            }\\n\
+            "}]\
+            """);
   }
 
   @Test
   public void testJsonStreamSourceMapUnderscore() {
     String inputSourceMap =
-        "{\n"
-            + "\"version\":3,\n"
-            + "\"file\":\"one.out.js\",\n"
-            + "\"lineCount\":1,\n"
-            + "\"mappings\":\"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,"
-            + "OAAAF,IAAA,CAAYC,CAAZ,CADc,CAGhBD,GAAA,CAAI,QAAJ;\",\n"
-            + "\"sources\":[\"one.js\"],\n"
-            + "\"names\":[\"log\",\"a\",\"console\"]\n"
-            + "}";
+        """
+        {\n\
+        "version":3,\n\
+        "file":"one.out.js",\n\
+        "lineCount":1,\n\
+        "mappings":"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,\
+        OAAAF,IAAA,CAAYC,CAAZ,CADc,CAGhBD,GAAA,CAAI,QAAJ;",\n\
+        "sources":["one.js"],\n\
+        "names":["log","a","console"]\n\
+        }\
+        """;
     inputSourceMap = inputSourceMap.replace("\"", "\\\"");
     String inputString =
-        "[{"
-            + "\"src\": \"function log(a){console.log(a)}log(\\\"one.js\\\");\", "
-            + "\"path\":\"one.out.js\", "
-            // input JSON with `source_map` field instead of `sourceMap`
-            + "\"source_map\": \""
-            + inputSourceMap
-            + "\" }]";
+        // input JSON with `source_map` field instead of `sourceMap`
+        """
+        [{\
+        "src": "function log(a){console.log(a)}log(\\"one.js\\");", \
+        "path":"one.out.js", \
+        "source_map": "INPUT_SOURCE_MAP" }]\
+        """
+            .replace("INPUT_SOURCE_MAP", inputSourceMap);
     args.add("--json_streams=BOTH");
     args.add("--js_output_file=bar.js");
     args.add("--apply_input_source_maps");
@@ -2690,17 +2749,19 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"function log(a){console.log(a)}log(\\\"one.js\\\");\\n"
-                + "\",\"path\":\"bar.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"bar.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,"
-                + "OAAAF,CAAAA,GAAAE,CAAYD,CAAZC,CADc,CAGhBF,GAAAA,CAAI,QAAJA;\\\",\\n"
-                + "\\\"sources\\\":[\\\"one.js\\\"],\\n"
-                + "\\\"names\\\":[\\\"log\\\",\\\"a\\\",\\\"console\\\"]\\n"
-                + "}\\n"
-                + "\"}]");
+            """
+            [{"src":"function log(a){console.log(a)}log(\\"one.js\\");\\n\
+            ","path":"bar.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"bar.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\"AAAAA,QAASA,IAAG,CAACC,CAAD,CAAI,CACdC,\
+            OAAAF,CAAAA,GAAAE,CAAYD,CAAZC,CADc,CAGhBF,GAAAA,CAAI,QAAJA;\\",\\n\
+            \\"sources\\":[\\"one.js\\"],\\n\
+            \\"names\\":[\\"log\\",\\"a\\",\\"console\\"]\\n\
+            }\\n\
+            "}]\
+            """);
   }
 
   @Test
@@ -2726,16 +2787,18 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"alert(\\\"foo\\\");\\n"
-                + "\",\"path\":\"./foo/bar/baz.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"./foo/bar/baz.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\"AAAAA,KAAA,CAAM,KAAN;\\\",\\n"
-                + "\\\"sources\\\":[\\\"foo.js\\\"],\\n"
-                + "\\\"names\\\":[\\\"alert\\\"]\\n"
-                + "}\\n"
-                + "\"}]");
+            """
+            [{"src":"alert(\\"foo\\");\\n\
+            ","path":"./foo/bar/baz.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"./foo/bar/baz.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\"AAAAA,KAAA,CAAM,KAAN;\\",\\n\
+            \\"sources\\":[\\"foo.js\\"],\\n\
+            \\"names\\":[\\"alert\\"]\\n\
+            }\\n\
+            "}]\
+            """);
   }
 
   @Test
@@ -2761,16 +2824,18 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"alert(\\\"foo\\\");\\n"
-                + "\",\"path\":\"./foo--bar.baz.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"./foo--bar.baz.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\"AAAAA,KAAA,CAAM,KAAN;\\\",\\n"
-                + "\\\"sources\\\":[\\\"foo.js\\\"],\\n"
-                + "\\\"names\\\":[\\\"alert\\\"]\\n"
-                + "}\\n"
-                + "\"}]");
+            """
+            [{"src":"alert(\\"foo\\");\\n\
+            ","path":"./foo--bar.baz.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"./foo--bar.baz.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\"AAAAA,KAAA,CAAM,KAAN;\\",\\n\
+            \\"sources\\":[\\"foo.js\\"],\\n\
+            \\"names\\":[\\"alert\\"]\\n\
+            }\\n\
+            "}]\
+            """);
   }
 
   @Test
@@ -2815,18 +2880,20 @@ public final class CommandLineRunnerTest {
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"var module$bar={default:{}};console.log(\\\"bar\\\");var"
-                + " module$foo={default:{}};\\n"
-                + "\",\"path\":\"out.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"out.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\"AAAA,IAAA,WAAA,CAAA,QAAA,EAAA,CAAAA,QAAQC,CAAAA,GAAR,"
-                + "CAAY,KAAZ,C,CCAA,IAAA,WAAA,CAAA,QAAA,EAAA;\\\",\\n"
-                + "\\\"sources\\\":[\\\"bar.js\\\",\\\"foo.js\\\"],\\n"
-                + "\\\"names\\\":[\\\"console\\\",\\\"log\\\"]\\n"
-                + "}\\n"
-                + "\"}]");
+            """
+            [{"src":"var module$bar={default:{}};console.log(\\"bar\\");var \
+            module$foo={default:{}};\\n\
+            ","path":"out.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"out.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\"AAAA,IAAA,WAAA,CAAA,QAAA,EAAA,CAAAA,QAAQC,CAAAA,GAAR,\
+            CAAY,KAAZ,C,CCAA,IAAA,WAAA,CAAA,QAAA,EAAA;\\",\\n\
+            \\"sources\\":[\\"bar.js\\",\\"foo.js\\"],\\n\
+            \\"names\\":[\\"console\\",\\"log\\"]\\n\
+            }\\n\
+            "}]\
+            """);
   }
 
   @Test
@@ -2836,14 +2903,15 @@ public final class CommandLineRunnerTest {
     test(
         "function foo(){ const answerToAll = 42; }",
         """
-(function(a){a.window||(a.window=a,a.window.top=a)})(typeof self!=="undefined"?self:globalThis);var __jscov=window.top.__jscov||
-(window.top.__jscov={fileNames:[],instrumentedLines:[],executedLines:[]}),
-JSCompiler_lcov_data_input0=[];
-__jscov.executedLines.push(JSCompiler_lcov_data_input0);
-__jscov.instrumentedLines.push("01");
-__jscov.fileNames.push("input0");
-function foo(){JSCompiler_lcov_data_input0[0]=!0}
-""");
+        (function(a){a.window||(a.window=a,a.window.top=a)})(\
+        typeof self!=="undefined"?self:globalThis);var __jscov=window.top.__jscov||
+        (window.top.__jscov={fileNames:[],instrumentedLines:[],executedLines:[]}),
+        JSCompiler_lcov_data_input0=[];
+        __jscov.executedLines.push(JSCompiler_lcov_data_input0);
+        __jscov.instrumentedLines.push("01");
+        __jscov.fileNames.push("input0");
+        function foo(){JSCompiler_lcov_data_input0[0]=!0}
+        """);
   }
 
   @Test
@@ -2853,11 +2921,12 @@ function foo(){JSCompiler_lcov_data_input0[0]=!0}
     test(
         "function foo(){ const answerToAll = 42; }",
         """
-(function(a){a.window||(a.window=a,a.window.top=a)})(typeof self!=="undefined"?self:globalThis);
-var __jscov=window.top.__jscov||(window.top.__jscov=
-{fileNames:[],branchPresent:[],branchesInLine:[],branchesTaken:[]});
-function foo(){}
-""");
+        (function(a){a.window||(a.window=a,a.window.top=a)})(\
+        typeof self!=="undefined"?self:globalThis);
+        var __jscov=window.top.__jscov||(window.top.__jscov=
+        {fileNames:[],branchPresent:[],branchesInLine:[],branchesTaken:[]});
+        function foo(){}
+        """);
   }
 
   @Test
@@ -2868,8 +2937,9 @@ function foo(){}
     assertThat(e)
         .hasMessageThat()
         .isEqualTo(
-            "Expected --instrument_mapping_report to be set when "
-                + "--instrument_for_coverage_option is set to Production");
+            """
+            Expected --instrument_mapping_report to be set when --instrument_for_coverage_option is set to Production\
+            """);
   }
 
   @Test
@@ -2880,8 +2950,9 @@ function foo(){}
     assertThat(e)
         .hasMessageThat()
         .isEqualTo(
-            "Expected --instrument_for_coverage_option to be passed with PRODUCTION "
-                + "when --instrument_mapping_report is set");
+            """
+            Expected --instrument_for_coverage_option to be passed with PRODUCTION when --instrument_mapping_report is set\
+            """);
   }
 
   @Test
@@ -2893,8 +2964,9 @@ function foo(){}
     assertThat(e)
         .hasMessageThat()
         .isEqualTo(
-            "Expected --production_instrumentation_array_name to be set when "
-                + "--instrument_for_coverage_option is set to Production");
+            """
+            Expected --production_instrumentation_array_name to be set when --instrument_for_coverage_option is set to Production\
+            """);
   }
 
   @Test
@@ -2914,13 +2986,16 @@ function foo(){}
 
     String bundledJs = java.nio.file.Files.readString(bundledFile.toPath());
     String expected =
-        lines(
-            "//" + jsFile1.getValue(),
-            "var a;",
-            "//" + jsFile2.getValue(),
-            "goog.loadModule(function(exports) {'use strict';goog.module('foo'); var b;",
-            ";return exports;});",
-            "\n");
+        """
+        //VALUE_1
+        var a;
+        //VALUE_2
+        goog.loadModule(function(exports) {'use strict';goog.module('foo'); var b;
+        ;return exports;});
+
+        """
+            .replace("VALUE_1", jsFile1.getValue())
+            .replace("VALUE_2", jsFile2.getValue());
     assertThat(bundledJs).isEqualTo(expected);
   }
 
@@ -2942,7 +3017,12 @@ function foo(){}
     compileJsFiles("", jsFile);
 
     String bundledJs = java.nio.file.Files.readString(bundledFile.toPath());
-    String expected = lines("//" + jsFile.getValue(), "var a; syntax error!\n");
+    String expected =
+        """
+        //VALUE
+        var a; syntax error!
+        """
+            .replace("VALUE", jsFile.getValue());
     assertThat(bundledJs).isEqualTo(expected);
   }
 
@@ -3111,26 +3191,28 @@ function foo(){}
     String output = new String(outReader.toByteArray(), UTF_8);
     assertThat(output)
         .isEqualTo(
-            "[{\"src\":\"\\n"
-                + "\",\"path\":\"./m1.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"./m1.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\";\\\",\\n"
-                + "\\\"sources\\\":[],\\n"
-                + "\\\"names\\\":[]\\n"
-                + "}\\n"
-                + "\"},{\"src\":\"alert(\\\"foo\\\");\\n"
-                + "\",\"path\":\"./m2.js\",\"source_map\":\"{\\n"
-                + "\\\"version\\\":3,\\n"
-                + "\\\"file\\\":\\\"./m2.js\\\",\\n"
-                + "\\\"lineCount\\\":1,\\n"
-                + "\\\"mappings\\\":\\\"AAAAA,KAAA,CAAM,KAAN;\\\",\\n"
-                + "\\\"sources\\\":[\\\"foo.js\\\"],\\n"
-                + "\\\"sourcesContent\\\":[\\\"alert('foo');\\\"],\\n"
-                + "\\\"names\\\":[\\\"alert\\\"]\\n"
-                + "}\\n"
-                + "\"}]");
+            """
+            [{"src":"\\n\
+            ","path":"./m1.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"./m1.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\";\\",\\n\
+            \\"sources\\":[],\\n\
+            \\"names\\":[]\\n\
+            }\\n\
+            "},{"src":"alert(\\"foo\\");\\n\
+            ","path":"./m2.js","source_map":"{\\n\
+            \\"version\\":3,\\n\
+            \\"file\\":\\"./m2.js\\",\\n\
+            \\"lineCount\\":1,\\n\
+            \\"mappings\\":\\"AAAAA,KAAA,CAAM,KAAN;\\",\\n\
+            \\"sources\\":[\\"foo.js\\"],\\n\
+            \\"sourcesContent\\":[\\"alert('foo');\\"],\\n\
+            \\"names\\":[\\"alert\\"]\\n\
+            }\\n\
+            "}]\
+            """);
   }
 
   @Test
@@ -3219,12 +3301,14 @@ function foo(){}
   public void testParamModification1() {
     args.add("--compilation_level=ADVANCED");
     test(
-        "function substr (value, begin, end) {"
-            + "  return value.slice(begin, end)"
-            + "}"
-            + "window.bug = function (s, i) {"
-            + "  return substr(s, i, i = 5);"
-            + "}",
+        """
+        function substr (value, begin, end) {
+          return value.slice(begin, end)
+        }
+        window.bug = function (s, i) {
+          return substr(s, i, i = 5);
+        }
+        """,
         "window.a=function(b,c){return b.slice(c,5);};");
   }
 
@@ -3232,12 +3316,14 @@ function foo(){}
   public void testParamModification2() {
     args.add("--compilation_level=ADVANCED");
     test(
-        "function substr (value, begin, end) {"
-            + "  return value.slice(begin, end)"
-            + "}"
-            + "window.bug = function (s, i) {"
-            + "  return substr(s, i, (s='',i=5));"
-            + "}",
+        """
+        function substr (value, begin, end) {
+          return value.slice(begin, end)
+        }
+        window.bug = function (s, i) {
+          return substr(s, i, (s='',i=5));
+        }
+        """,
         "window.a=function(b,c){return b.slice(c,5)}");
   }
 
@@ -3245,26 +3331,33 @@ function foo(){}
   public void testParamModification3() {
     args.add("--compilation_level=SIMPLE");
     test(
-        "function substr (value, begin, end) {"
-            + "  return value.slice(begin, end)"
-            + "}"
-            + "window.bug = function (s, i) {"
-            + "  return substr(s, i, (s='',i=5));"
-            + "}",
-        "function substr(a,b,c){return a.slice(b,c)} window.bug=function(a,b){return"
-            + " substr(a,b,5)}");
+        """
+        function substr (value, begin, end) {
+          return value.slice(begin, end)
+        }
+        window.bug = function (s, i) {
+          return substr(s, i, (s='',i=5));
+        }
+        """,
+        """
+        function substr(a,b,c){
+        return a.slice(b,c)}
+        window.bug=function(a,b){return substr(a,b,5)}
+        """);
   }
 
   @Test
   public void testParamModification4() {
     args.add("--compilation_level=ADVANCED");
     test(
-        "function substr (value, begin, end, a, b, c) {"
-            + "  return value.slice(begin, end, a, b, c)"
-            + "}"
-            + "window.bug = function (s, i) {"
-            + "  return substr(s, i, i=5, i, i=7, i);"
-            + "}",
+        """
+        function substr (value, begin, end, a, b, c) {
+          return value.slice(begin, end, a, b, c)
+        }
+        window.bug = function (s, i) {
+          return substr(s, i, i=5, i, i=7, i);
+        }
+        """,
         "window.a=function(c,b){var d=b,e=b=5,f=b,g=b=7;return c.slice(d,e,f,g,b)}");
   }
 
@@ -3272,12 +3365,14 @@ function foo(){}
   public void testParamModification5() {
     args.add("--compilation_level=ADVANCED");
     test(
-        "function substr (value, begin, end) {"
-            + "  return value.slice(begin, end)"
-            + "}"
-            + "window.bug = function (a, b, c) {"
-            + "  return substr(a, b+1, b=c);"
-            + "}",
+        """
+        function substr (value, begin, end) {
+          return value.slice(begin, end)
+        }
+        window.bug = function (a, b, c) {
+          return substr(a, b+1, b=c);
+        }
+        """,
         "window.a=function(b,c,d){return b.slice(c+1,d)}");
   }
 
@@ -3371,13 +3466,13 @@ function foo(){}
     if (!compiler.getErrors().isEmpty()) {
       assertThat(compiler.getErrors()).hasSize(1);
       assertThat(compiler.getErrors().get(0).getType()).isEqualTo(warning);
-      assertWithMessage("Expected exit code of 1.  " + "Contents of err printstream:\n" + errReader)
+      assertWithMessage("Expected exit code of 1.  Contents of err printstream:\n" + errReader)
           .that(lastExitCode)
           .isEqualTo(1);
     } else {
       assertThat(compiler.getWarnings()).hasSize(1);
       assertThat(compiler.getWarnings().get(0).getType()).isEqualTo(warning);
-      assertWithMessage("Expected exit code of 0.  " + "Contents of err printstream:\n" + errReader)
+      assertWithMessage("Expected exit code of 0.  Contents of err printstream:\n" + errReader)
           .that(lastExitCode)
           .isEqualTo(0);
     }

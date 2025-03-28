@@ -24,7 +24,6 @@ import static com.google.javascript.jscomp.testing.JSCompCorrespondences.DESCRIP
 import static com.google.javascript.jscomp.testing.JSCompCorrespondences.DIAGNOSTIC_EQUALITY;
 import static com.google.javascript.rhino.testing.NodeSubject.assertNode;
 
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -49,12 +48,6 @@ import org.junit.runners.JUnit4;
 /** Test for {@link JsMessageVisitor}. */
 @RunWith(JUnit4.class)
 public final class JsMessageVisitorTest {
-  private static final Joiner LINE_JOINER = Joiner.on('\n');
-
-  private static String lines(String... lines) {
-    return LINE_JOINER.join(lines);
-  }
-
   private static class RenameMessagesVisitor extends AbstractPostOrderCallback {
     @Override
     public void visit(NodeTraversal t, Node n, Node parent) {
@@ -90,16 +83,17 @@ public final class JsMessageVisitorTest {
   public void testIcuTemplateParsing() {
     final IcuMessageTemplateString icuMessageTemplateString =
         new IcuMessageTemplateString(
-            lines(
-                "{NUM_PEOPLE, plural, offset:1 ",
-                // Some placeholders are ignored, because there's no additional information
-                // for them (original code or example text). There's no need to generate
-                // placeholder parts for those.
-                "=0 {I see {START_BOLD}no one at all{END_BOLD} in {INTERPOLATION_2}.}",
-                "=1 {I see {INTERPOLATION_1} in {INTERPOLATION_2}.}",
-                "=2 {I see {INTERPOLATION_1} and one other person in {INTERPOLATION_2}.}",
-                "other {I see {INTERPOLATION_1} and # other people in {INTERPOLATION_2}.}",
-                "}"));
+            // Some placeholders are ignored, because there's no additional information for them
+            // (original code or example text). There's no need to generate placeholder parts for
+            // those.
+            """
+            {NUM_PEOPLE, plural, offset:1
+            =0 {I see {START_BOLD}no one at all{END_BOLD} in {INTERPOLATION_2}.}
+            =1 {I see {INTERPOLATION_1} in {INTERPOLATION_2}.}
+            =2 {I see {INTERPOLATION_1} and one other person in {INTERPOLATION_2}.}
+            other {I see {INTERPOLATION_1} and # other people in {INTERPOLATION_2}.}
+            }
+            """);
     final ExtractedIcuTemplateParts extractedParts =
         icuMessageTemplateString.extractParts(
             ImmutableSet.of("INTERPOLATION_1", "INTERPOLATION_2", "MISSING"));
@@ -113,7 +107,7 @@ public final class JsMessageVisitorTest {
 
     assertThat(parts.get(0).getString())
         .isEqualTo(
-            "{NUM_PEOPLE, plural, offset:1 \n=0 {I see {START_BOLD}no one at all{END_BOLD} in ");
+            "{NUM_PEOPLE, plural, offset:1\n=0 {I see {START_BOLD}no one at all{END_BOLD} in ");
     assertThat(parts.get(1).getCanonicalPlaceholderName()).isEqualTo("INTERPOLATION_2");
     assertThat(parts.get(2).getString()).isEqualTo(".}\n=1 {I see ");
     assertThat(parts.get(3).getCanonicalPlaceholderName()).isEqualTo("INTERPOLATION_1");
@@ -127,7 +121,7 @@ public final class JsMessageVisitorTest {
     assertThat(parts.get(11).getCanonicalPlaceholderName()).isEqualTo("INTERPOLATION_1");
     assertThat(parts.get(12).getString()).isEqualTo(" and # other people in ");
     assertThat(parts.get(13).getCanonicalPlaceholderName()).isEqualTo("INTERPOLATION_2");
-    assertThat(parts.get(14).getString()).isEqualTo(".}\n}");
+    assertThat(parts.get(14).getString()).isEqualTo(".}\n}\n");
   }
 
   @Test
@@ -509,7 +503,10 @@ public final class JsMessageVisitorTest {
   @Test
   public void testJsMessageOnObjLit() {
     extractMessagesSafely(
-        "pint.sub = {" + "/** @desc a */ MSG_MENU_MARK_AS_UNREAD: goog.getMsg('a')}");
+        """
+        pint.sub = {
+        /** @desc a */ MSG_MENU_MARK_AS_UNREAD: goog.getMsg('a')}
+        """);
 
     JsMessage msg = assertOneMessage();
     assertThat(msg.getKey()).isEqualTo("MSG_MENU_MARK_AS_UNREAD");
@@ -519,7 +516,11 @@ public final class JsMessageVisitorTest {
   @Test
   public void testInvalidJsMessageOnObjLit() {
     extractMessages(
-        "" + "pint.sub = {" + "  /** @desc a */ MSG_MENU_MARK_AS_UNREAD: undefined" + "}");
+        """
+        pint.sub = {
+          /** @desc a */ MSG_MENU_MARK_AS_UNREAD: undefined
+        }
+        """);
     assertThat(compiler.getErrors()).isEmpty();
     assertOneWarning(MESSAGE_NOT_INITIALIZED_CORRECTLY);
   }
@@ -527,10 +528,11 @@ public final class JsMessageVisitorTest {
   @Test
   public void testJsMessageAliasOnObjLit() {
     extractMessagesSafely(
-        ""
-            + "pint.sub = {"
-            + "  MSG_MENU_MARK_AS_UNREAD: another.namespace.MSG_MENU_MARK_AS_UNREAD"
-            + "}");
+        """
+        pint.sub = {
+          MSG_MENU_MARK_AS_UNREAD: another.namespace.MSG_MENU_MARK_AS_UNREAD
+        }
+        """);
     assertThat(messages).isEmpty();
   }
 
@@ -575,11 +577,12 @@ public final class JsMessageVisitorTest {
   @Test
   public void testMessageDefinedInExportsIsNotOrphaned() {
     extractMessagesSafely(
-        ""
-            + "exports = {"
-            + "  /** @desc Description. */"
-            + "  MSG_FOO: goog.getMsg('Foo'),"
-            + "};");
+        """
+        exports = {
+          /** @desc Description. */
+          MSG_FOO: goog.getMsg('Foo'),
+        };
+        """);
   }
 
   @Test
@@ -676,7 +679,11 @@ public final class JsMessageVisitorTest {
 
   @Test
   public void testClosureMessageWithHelpPostfix() {
-    extractMessagesSafely("/** @desc help text */\n" + "var MSG_FOO_HELP = goog.getMsg('Help!');");
+    extractMessagesSafely(
+        """
+        /** @desc help text */
+        var MSG_FOO_HELP = goog.getMsg('Help!');
+        """);
 
     JsMessage msg = assertOneMessage();
     assertThat(msg.getKey()).isEqualTo("MSG_FOO_HELP");
@@ -798,9 +805,11 @@ public final class JsMessageVisitorTest {
     assertThat(msg.getDesc()).isEqualTo("A message with lots of stuff.");
     assertThat(msg.asJsMessageString())
         .isEqualTo(
-            "{$startLink_1}Google{$endLink}{$startLink_2}blah{$endLink}"
-                + "{$boo}{$foo_001}{$boo}{$foo_002}{$xxx_001}{$image}"
-                + "{$image_001}{$xxx_002}");
+            """
+            {$startLink_1}Google{$endLink}{$startLink_2}blah{$endLink}\
+            {$boo}{$foo_001}{$boo}{$foo_002}{$xxx_001}{$image}\
+            {$image_001}{$xxx_002}\
+            """);
   }
 
   @Test
@@ -861,7 +870,10 @@ public final class JsMessageVisitorTest {
   @Test
   public void testEmptyTextComplexMessage() {
     extractMessages(
-        "/** @desc text */ var MSG_BAR = goog.getMsg(" + "'' + '' + ''     + ''\n+'');");
+        """
+        /** @desc text */ var MSG_BAR = goog.getMsg(
+        '' + '' + ''     + '' +'');
+        """);
 
     assertOneMessage();
     assertThat(compiler.getErrors()).isEmpty();
@@ -930,12 +942,14 @@ public final class JsMessageVisitorTest {
   @Test
   public void testExtractPropertyMessage() {
     extractMessagesSafely(
-        "/**"
-            + " * @desc A message that demonstrates placeholders\n"
-            + " */"
-            + "a.b.MSG_SILLY = goog.getMsg(\n"
-            + "    '{$adjective} ' + '{$someNoun}',\n"
-            + "    {'adjective': adj, 'someNoun': noun});");
+        """
+        /**
+         * @desc A message that demonstrates placeholders
+         */
+        a.b.MSG_SILLY = goog.getMsg(
+            '{$adjective} ' + '{$someNoun}',
+            {'adjective': adj, 'someNoun': noun});
+        """);
 
     JsMessage msg = assertOneMessage();
     assertThat(msg.getKey()).isEqualTo("MSG_SILLY");
@@ -946,15 +960,16 @@ public final class JsMessageVisitorTest {
   @Test
   public void testExtractPropertyMessageInFunction() {
     extractMessagesSafely(
-        ""
-            + "function f() {\n"
-            + "  /**\n"
-            + "   * @desc A message that demonstrates placeholders\n"
-            + "   */\n"
-            + "  a.b.MSG_SILLY = goog.getMsg(\n"
-            + "      '{$adjective} ' + '{$someNoun}',\n"
-            + "      {'adjective': adj, 'someNoun': noun});\n"
-            + "}");
+        """
+        function f() {
+          /**
+           * @desc A message that demonstrates placeholders
+           */
+          a.b.MSG_SILLY = goog.getMsg(
+              '{$adjective} ' + '{$someNoun}',
+              {'adjective': adj, 'someNoun': noun});
+        }
+        """);
 
     JsMessage msg = assertOneMessage();
     assertThat(msg.getKey()).isEqualTo("MSG_SILLY");
@@ -1015,7 +1030,11 @@ public final class JsMessageVisitorTest {
 
   @Test
   public void testUnusedReferenesAreNotOK() {
-    extractMessages("/** @desc AA */ " + "var MSG_FOO = goog.getMsg('lalala:', {foo:1});");
+    extractMessages(
+        """
+        /** @desc AA */
+        var MSG_FOO = goog.getMsg('lalala:', {foo:1});
+        """);
     assertThat(messages).isEmpty();
     assertOneError(
         MESSAGE_TREE_MALFORMED, "Message parse tree malformed. Unused message placeholder: foo");
@@ -1024,7 +1043,11 @@ public final class JsMessageVisitorTest {
 
   @Test
   public void testDuplicatePlaceHoldersAreBad() {
-    extractMessages("var MSG_FOO = goog.getMsg(" + "'{$foo}:', {'foo': 1, 'foo' : 2});");
+    extractMessages(
+        """
+        var MSG_FOO = goog.getMsg(
+        '{$foo}:', {'foo': 1, 'foo' : 2});
+        """);
 
     assertThat(messages).isEmpty();
     assertOneError(
@@ -1047,7 +1070,7 @@ public final class JsMessageVisitorTest {
   @Test
   public void testCamelcasePlaceholderNamesAreOk() {
     extractMessagesSafely(
-        """
+"""
 /** @desc Hello */
 var MSG_WITH_CAMELCASE = goog.getMsg('Slide {$slideNumber}:', {'slideNumber': opt_index + 1});
 """);
@@ -1096,7 +1119,10 @@ var MSG_WITH_CAMELCASE = goog.getMsg('Slide {$slideNumber}:', {'slideNumber': op
   @Test
   public void testUnquotedPlaceholdersAreOk() {
     extractMessagesSafely(
-        "/** @desc Hello */ " + "var MSG_FOO = goog.getMsg('foo {$unquoted}:', {unquoted: 12});");
+        """
+        /** @desc Hello */
+        var MSG_FOO = goog.getMsg('foo {$unquoted}:', {unquoted: 12});
+        """);
 
     assertOneMessage();
   }
@@ -1104,8 +1130,10 @@ var MSG_WITH_CAMELCASE = goog.getMsg('Slide {$slideNumber}:', {'slideNumber': op
   @Test
   public void testDuplicateMessageError() {
     extractMessages(
-        "(function () {/** @desc Hello */ var MSG_HELLO = goog.getMsg('a')})"
-            + "(function () {/** @desc Hello2 */ var MSG_HELLO = goog.getMsg('a')})");
+        """
+        (function () {/** @desc Hello */ var MSG_HELLO = goog.getMsg('a')})
+        (function () {/** @desc Hello2 */ var MSG_HELLO = goog.getMsg('a')})
+        """);
 
     assertOneError(JsMessageVisitor.MESSAGE_DUPLICATE_KEY);
     assertThat(compiler.getWarnings()).isEmpty();
@@ -1114,10 +1142,12 @@ var MSG_WITH_CAMELCASE = goog.getMsg('Slide {$slideNumber}:', {'slideNumber': op
   @Test
   public void testNoDuplicateErrorOnExternMessage() {
     extractMessagesSafely(
-        "(function () {/** @desc Hello */ "
-            + "var MSG_EXTERNAL_2 = goog.getMsg('a')})"
-            + "(function () {/** @desc Hello2 */ "
-            + "var MSG_EXTERNAL_2 = goog.getMsg('a')})");
+        """
+        (function () {/** @desc Hello */
+        var MSG_EXTERNAL_2 = goog.getMsg('a')})
+        (function () {/** @desc Hello2 */
+        var MSG_EXTERNAL_2 = goog.getMsg('a')})
+        """);
   }
 
   @Test
@@ -1189,10 +1219,12 @@ var MSG_WITH_CAMELCASE = goog.getMsg('Slide {$slideNumber}:', {'slideNumber': op
   @Test
   public void testErrorWhenUsingMsgPrefixWithFallback() {
     extractMessages(
-        "/** @desc Hello */ var MSG_HELLO_1 = goog.getMsg('hello');\n"
-            + "/** @desc Hello */ var MSG_HELLO_2 = goog.getMsg('hello');\n"
-            + "/** @desc Hello */ "
-            + "var MSG_HELLO_3 = goog.getMsgWithFallback(MSG_HELLO_1, MSG_HELLO_2);");
+        """
+        /** @desc Hello */ var MSG_HELLO_1 = goog.getMsg('hello');
+        /** @desc Hello */ var MSG_HELLO_2 = goog.getMsg('hello');
+        /** @desc Hello */
+        var MSG_HELLO_3 = goog.getMsgWithFallback(MSG_HELLO_1, MSG_HELLO_2);
+        """);
     assertOneError(MESSAGE_TREE_MALFORMED);
     assertThat(compiler.getWarnings()).isEmpty();
   }

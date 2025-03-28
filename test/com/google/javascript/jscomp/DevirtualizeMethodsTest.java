@@ -189,9 +189,11 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
   public void testRewriteDeclIsExpressionStatement() {
     test(
         semicolonJoin(NoRewriteDeclarationUsedAsRValue.DECL, NoRewriteDeclarationUsedAsRValue.CALL),
-        "var JSCompiler_StaticMethods_foo ="
-            + "function(JSCompiler_StaticMethods_foo$self) {};"
-            + "JSCompiler_StaticMethods_foo(o)");
+        """
+        var JSCompiler_StaticMethods_foo =
+        function(JSCompiler_StaticMethods_foo$self) {};
+        JSCompiler_StaticMethods_foo(o)
+        """);
   }
 
   @Test
@@ -256,11 +258,14 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
 
   private void testNoRewriteIfDefinitionSiteBetween(String prefix, String suffix) {
     testSame(
-        lines(
-            "function a(){}",
-            prefix + "a.prototype.foo = function() {return this.x}" + suffix + ";",
-            "var o = new a;",
-            "o.foo()"));
+        """
+        function a(){}
+        _PREFIX_a.prototype.foo = function() {return this.x}_SUFFIX_;
+        var o = new a;
+        o.foo()
+        """
+            .replace("_PREFIX_", prefix)
+            .replace("_SUFFIX_", suffix));
   }
 
   @Test
@@ -340,18 +345,22 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
   private void testRewritePreservesFunctionKind(String fnKeyword) {
     test(
         srcs(
-            lines(
-                "function a(){}",
-                "a.prototype.foo = " + fnKeyword + "() { return 0; };",
-                "",
-                "(new a()).foo();")),
+            """
+            function a(){}
+            a.prototype.foo = FN_KEYWORD() { return 0; };
+
+            (new a()).foo();
+            """
+                .replace("FN_KEYWORD", fnKeyword)),
         expected(
-            lines(
-                "function a(){}",
-                "var JSCompiler_StaticMethods_foo =",
-                "    " + fnKeyword + "(JSCompiler_StaticMethods_foo$self) { return 0; };",
-                "",
-                "JSCompiler_StaticMethods_foo(new a());")));
+            """
+            function a(){}
+            var JSCompiler_StaticMethods_foo =
+                FN_KEYWORD(JSCompiler_StaticMethods_foo$self) { return 0; };
+
+            JSCompiler_StaticMethods_foo(new a());
+            """
+                .replace("FN_KEYWORD", fnKeyword)));
   }
 
   @Test
@@ -762,77 +771,85 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
   @Test
   public void testNoRewrite_nonCallReference_viaGetprop() {
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "o.foo;"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            o.foo;
+            """);
   }
 
   @Test
   public void testNoRewrite_nonCallReference_viaDestructuring() {
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "const {foo: x} = o;"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            const {foo: x} = o;
+            """);
   }
 
   @Test
   public void testNoRewrite_nonCallReference_viaGetprop_usingFnCall() {
     // TODO(nickreid): Add rewriting support for this.
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "o.foo.call(null);"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            o.foo.call(null);
+            """);
   }
 
   @Test
   public void testNoRewrite_nonCallReference_viaGetprop_usingFnApply() {
     // TODO(nickreid): Add rewriting support for this.
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "o.foo.apply(null);"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            o.foo.apply(null);
+            """);
   }
 
   @Test
   public void testNoRewrite_nonCallReference_viaGetprop_asArgument() {
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "bar(o.foo, null);"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            bar(o.foo, null);
+            """);
   }
 
   @Test
   public void testNoRewrite_nonCallReference_viaTaggedTemplateString() {
     // TODO(nickreid): Add rewriting support for this.
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "o.foo`Hello World!`;"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            o.foo`Hello World!`;
+            """);
   }
 
   @Test
   public void testNoRewrite_optChain() {
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();", // We need at least one normal call to trigger rewriting.
-            "o.foo?.();"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo(); // We need at least one normal call to trigger rewriting.
+            o.foo?.();
+            """);
   }
 
   @Test
   public void testNoRewrite_nonCallReference_viaNew() {
     // TODO(nickreid): Add rewriting support for this.
     testSame(
-        lines(
-            NoRewriteNonCallReferenceTestInput.BASE, //
-            "o.foo();",
-            "new o.foo();"));
+        NoRewriteNonCallReferenceTestInput.BASE
+            + """
+            o.foo();
+            new o.foo();
+            """);
   }
 
   /** Inputs for nested definition tests. */
@@ -841,7 +858,10 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
     static final String SUFFIX = "o.foo()";
     static final String INNER = "a.prototype.bar = function() {}; o.bar()";
     static final String EXPECTED_PREFIX =
-        "var JSCompiler_StaticMethods_foo=" + "function(JSCompiler_StaticMethods_foo$self){";
+        """
+        var JSCompiler_StaticMethods_foo=
+        function(JSCompiler_StaticMethods_foo$self){
+        """;
     static final String EXPECTED_SUFFIX = "JSCompiler_StaticMethods_foo(o)";
 
     private NoRewriteNestedFunctionTestInput() {}
@@ -857,7 +877,10 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
         semicolonJoin(
             NoRewriteNestedFunctionTestInput.EXPECTED_PREFIX + "}",
             NoRewriteNestedFunctionTestInput.EXPECTED_SUFFIX,
-            "var JSCompiler_StaticMethods_bar=" + "function(JSCompiler_StaticMethods_bar$self){}",
+            """
+            var JSCompiler_StaticMethods_bar=
+            function(JSCompiler_StaticMethods_bar$self){}
+            """,
             "JSCompiler_StaticMethods_bar(o)"));
   }
 
@@ -1157,13 +1180,14 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
     disableCompareJsDoc(); // multistage compilation simplifies jsdoc
     test(
         srcs(
-            lines(
-                annotation,
-                "function Foo() { }", //
-                "Foo.bar = function() { return 5; }",
-                "",
+            annotation
+                + """
+                function Foo() { }
+                Foo.bar = function() { return 5; }
+
                 // We need at least one normal call to trigger rewriting.
-                "x.bar();")),
+                x.bar();
+                """),
         expected(
             """
             function Foo() { }
@@ -1496,7 +1520,10 @@ public final class DevirtualizeMethodsTest extends CompilerTestCase {
     static final String USE = "x.foo()";
 
     static final String REWRITTEN_DEFINITION =
-        "var JSCompiler_StaticMethods_foo=" + "function(JSCompiler_StaticMethods_foo$self){}";
+        """
+        var JSCompiler_StaticMethods_foo=
+        function(JSCompiler_StaticMethods_foo$self){}
+        """;
     static final String REWRITTEN_USE = "JSCompiler_StaticMethods_foo(x)";
 
     private ModuleTestInput() {}

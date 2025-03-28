@@ -16,7 +16,6 @@
 
 package com.google.javascript.jscomp;
 
-import static com.google.javascript.jscomp.CompilerTestCase.lines;
 import static com.google.javascript.jscomp.deps.ModuleLoader.LOAD_WARNING;
 
 import com.google.javascript.jscomp.ExtractPrototypeMemberDeclarations.Pattern;
@@ -73,18 +72,32 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
   @Test
   public void testClassDefinedInBlock() {
     test(
-        lines("{", generatePrototypeDeclarations("x", 7), "}"),
-        lines(
-            "var " + TMP + ";",
-            "{",
-            TMP + " = x.prototype;",
-            generateExtractedDeclarations(7),
-            "}"));
+        """
+        {
+        PROTYPE_DECLARATIONS
+        }
+        """
+            .replace("PROTYPE_DECLARATIONS", generatePrototypeDeclarations("x", 7)),
+        """
+        var TMP;
+        {
+        TMP = x.prototype;
+        EXTRACTED_DECLARATIONS
+        }
+        """
+            .replace("TMP", TMP)
+            .replace("EXTRACTED_DECLARATIONS", generateExtractedDeclarations(7)));
   }
 
   @Test
   public void testClassDefinedInFunction() {
-    testSame(lines("function f() {", generatePrototypeDeclarations("x", 7), "}"));
+    testSame(
+        """
+        function f() {
+        PROTYPE_DECLARATIONS
+        }
+        """
+            .replace("PROTYPE_DECLARATIONS", generatePrototypeDeclarations("x", 7)));
   }
 
   /** Currently, this does not run on classes defined in ES6 modules. */
@@ -125,9 +138,11 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
   @Test
   public void testNoMemberDeclarations() {
     testSame(
-        "x.prototype = {}; x.prototype = {}; x.prototype = {};"
-            + "x.prototype = {}; x.prototype = {}; x.prototype = {};"
-            + "x.prototype = {}; x.prototype = {}; x.prototype = {};");
+        """
+        x.prototype = {}; x.prototype = {}; x.prototype = {};
+        x.prototype = {}; x.prototype = {}; x.prototype = {};
+        x.prototype = {}; x.prototype = {}; x.prototype = {};
+        """);
   }
 
   @Test
@@ -140,24 +155,28 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
   @Test
   public void testInterweaved() {
     testSame(
-        "x.prototype.a=1; y.prototype.a=1;"
-            + "x.prototype.b=1; y.prototype.b=1;"
-            + "x.prototype.c=1; y.prototype.c=1;"
-            + "x.prototype.d=1; y.prototype.d=1;"
-            + "x.prototype.e=1; y.prototype.e=1;"
-            + "x.prototype.f=1; y.prototype.f=1;");
+        """
+        x.prototype.a=1; y.prototype.a=1;
+        x.prototype.b=1; y.prototype.b=1;
+        x.prototype.c=1; y.prototype.c=1;
+        x.prototype.d=1; y.prototype.d=1;
+        x.prototype.e=1; y.prototype.e=1;
+        x.prototype.f=1; y.prototype.f=1;
+        """);
   }
 
   @Test
   public void testExtractingPrototypeWithNestedMembers() {
     extract(
-        "x.prototype.y.a = 1;"
-            + "x.prototype.y.b = 1;"
-            + "x.prototype.y.c = 1;"
-            + "x.prototype.y.d = 1;"
-            + "x.prototype.y.e = 1;"
-            + "x.prototype.y.f = 1;"
-            + "x.prototype.y.g = 1;",
+        """
+        x.prototype.y.a = 1;
+        x.prototype.y.b = 1;
+        x.prototype.y.c = 1;
+        x.prototype.y.d = 1;
+        x.prototype.y.e = 1;
+        x.prototype.y.f = 1;
+        x.prototype.y.g = 1;
+        """,
         loadPrototype("x")
             + TMP
             + ".y.a = 1;"
@@ -178,19 +197,21 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
   @Test
   public void testWithDevirtualization() {
     extract(
-        "x.prototype.a = 1;"
-            + "x.prototype.b = 1;"
-            + "function devirtualize1() { }"
-            + "x.prototype.c = 1;"
-            + "x.prototype.d = 1;"
-            + "x.prototype.e = 1;"
-            + "x.prototype.f = 1;"
-            + "x.prototype.g = 1;",
+        """
+        x.prototype.a = 1;
+        x.prototype.b = 1;
+        function devirtualize1() { }
+        x.prototype.c = 1;
+        x.prototype.d = 1;
+        x.prototype.e = 1;
+        x.prototype.f = 1;
+        x.prototype.g = 1;
+        """,
         loadPrototype("x")
             + TMP
             + ".a = 1;"
             + TMP
-            + ".b = 1;"
+            + ".b = 1;\n"
             + "function devirtualize1() { }"
             + TMP
             + ".c = 1;"
@@ -204,31 +225,33 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
             + ".g = 1;");
 
     extract(
-        "x.prototype.a = 1;"
-            + "x.prototype.b = 1;"
-            + "function devirtualize1() { }"
-            + "x.prototype.c = 1;"
-            + "x.prototype.d = 1;"
-            + "function devirtualize2() { }"
-            + "x.prototype.e = 1;"
-            + "x.prototype.f = 1;"
-            + "function devirtualize3() { }"
-            + "x.prototype.g = 1;",
+        """
+        x.prototype.a = 1;
+        x.prototype.b = 1;
+        function devirtualize1() { }
+        x.prototype.c = 1;
+        x.prototype.d = 1;
+        function devirtualize2() { }
+        x.prototype.e = 1;
+        x.prototype.f = 1;
+        function devirtualize3() { }
+        x.prototype.g = 1;
+        """,
         loadPrototype("x")
             + TMP
             + ".a = 1;"
             + TMP
-            + ".b = 1;"
+            + ".b = 1;\n"
             + "function devirtualize1() { }"
             + TMP
             + ".c = 1;"
             + TMP
-            + ".d = 1;"
+            + ".d = 1;\n"
             + "function devirtualize2() { }"
             + TMP
             + ".e = 1;"
             + TMP
-            + ".f = 1;"
+            + ".f = 1;\n"
             + "function devirtualize3() { }"
             + TMP
             + ".g = 1;");
@@ -255,10 +278,12 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
     pattern = Pattern.USE_IIFE;
 
     extract(
-        "x.prototype.a = 1;"
-            + "x.prototype.b = 1;"
-            + "function devirtualize() { }"
-            + "x.prototype.c = 1;",
+        """
+        x.prototype.a = 1;
+        x.prototype.b = 1;
+        function devirtualize() { }
+        x.prototype.c = 1;
+        """,
         "(function("
             + TMP
             + ") {"
@@ -272,12 +297,14 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
             + "function devirtualize() { }");
 
     extract(
-        "x.prototype.a = 1;"
-            + "function devirtualize1() { }"
-            + "x.prototype.b = 1;"
-            + "function devirtualize2() { }"
-            + "x.prototype.c = 1;"
-            + "function devirtualize3() { }",
+        """
+        x.prototype.a = 1;
+        function devirtualize1() { }
+        x.prototype.b = 1;
+        function devirtualize2() { }
+        x.prototype.c = 1;
+        function devirtualize3() { }
+        """,
         "(function("
             + TMP
             + ") {"
@@ -288,8 +315,8 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
             + TMP
             + ".c = 1;"
             + loadPrototype("x")
-            + "function devirtualize1() { }"
-            + "function devirtualize2() { }"
+            + "function devirtualize1() { }\n"
+            + "function devirtualize2() { }\n"
             + "function devirtualize3() { }");
   }
 
@@ -297,21 +324,23 @@ public final class ExtractPrototypeMemberDeclarationsTest extends CompilerTestCa
   public void testAnonWithSideFx() {
     pattern = Pattern.USE_IIFE;
     testSame(
-        "function foo() {};"
-            + "foo.prototype.a1 = 1;"
-            + "bar();;"
-            + "foo.prototype.a2 = 2;"
-            + "bar();;"
-            + "foo.prototype.a3 = 3;"
-            + "bar();;"
-            + "foo.prototype.a4 = 4;"
-            + "bar();;"
-            + "foo.prototype.a5 = 5;"
-            + "bar();;"
-            + "foo.prototype.a6 = 6;"
-            + "bar();;"
-            + "foo.prototype.a7 = 7;"
-            + "bar();");
+        """
+        function foo() {};
+        foo.prototype.a1 = 1;
+        bar();;
+        foo.prototype.a2 = 2;
+        bar();;
+        foo.prototype.a3 = 3;
+        bar();;
+        foo.prototype.a4 = 4;
+        bar();;
+        foo.prototype.a5 = 5;
+        bar();;
+        foo.prototype.a6 = 6;
+        bar();;
+        foo.prototype.a7 = 7;
+        bar();
+        """);
   }
 
   @Test
