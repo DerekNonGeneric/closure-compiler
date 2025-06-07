@@ -321,7 +321,7 @@ class PeepholeRemoveDeadCode extends AbstractPeepholeOptimization {
 
       // Assemble a tree of comma expressions for all the side-effects. The tree must execute the
       // side-effects in FIFO order with respect to the queue. It must also be left leaning to match
-      // the parser's preferred strucutre.
+      // the parser's preferred structure.
       while (!sideEffectRoots.isEmpty()) {
         Node next = asDetachedExpression(sideEffectRoots.pollFirst());
         sideEffects = IR.comma(sideEffects, next).srcref(next);
@@ -478,23 +478,18 @@ class PeepholeRemoveDeadCode extends AbstractPeepholeOptimization {
   private static boolean hasFixedPointParent(Node expr) {
     // Most kinds of nodes shouldn't be branches in the fixed-point tree of an unused
     // expression. Those listed below are the only valid kinds.
-    switch (expr.getParent().getToken()) {
-      case AND:
-      case COMMA:
-      case HOOK:
-      case OR:
-      case COALESCE:
-        return true;
-      case ARRAYLIT:
-      case OBJECTLIT:
-        // Make a special allowance for SPREADs so they remain in a legal context. Parent types
-        // other than ARRAYLIT and OBJECTLIT are not fixed-point because they are the tersest legal
-        // parents and are known to be side-effect free.
-        return expr.isSpread();
-      default:
-        // Statments are always fixed-point parents. All other expressions are not.
-        return NodeUtil.isStatement(expr.getParent());
-    }
+    return switch (expr.getParent().getToken()) {
+      case AND, COMMA, HOOK, OR, COALESCE -> true;
+      case ARRAYLIT, OBJECTLIT ->
+          // Make a special allowance for SPREADs so they remain in a legal context. Parent types
+          // other than ARRAYLIT and OBJECTLIT are not fixed-point because they are the tersest
+          // legal
+          // parents and are known to be side-effect free.
+          expr.isSpread();
+      default ->
+          // Statments are always fixed-point parents. All other expressions are not.
+          NodeUtil.isStatement(expr.getParent());
+    };
   }
 
   /** A predicate for matching anything except function nodes. */
@@ -559,22 +554,31 @@ class PeepholeRemoveDeadCode extends AbstractPeepholeOptimization {
     Node defaultCase = tryOptimizeDefaultCase(n);
 
     // Generally, it is unsafe to remove other cases when the default case is not the last one.
-    if (defaultCase == null || switchBody.getLastChild().isDefaultCase()) {
+    if ((defaultCase == null || switchBody.getLastChild().isDefaultCase())
+        && areAllCaseTagsLiterals(switchBody)) {
       Node cond = n.getFirstChild();
       Node prev = null;
       Node next = null;
       Node cur;
 
+      // First, remove empty cases where possible: always empty default cases; or when there is
+      // no default case, other empty cases that are not the first matching case, may be
+      // removable as well.
+      boolean foundMatchingCase = false;
       for (cur = switchBody.getFirstChild(); cur != null; cur = next) {
         next = cur.getNext();
-        if (!mayHaveSideEffects(cur.getFirstChild()) && isUselessCase(cur, prev, defaultCase)) {
+        Node firstChild = cur.getFirstChild();
+        foundMatchingCase = isFirstSwitchMatch(foundMatchingCase, cond, firstChild);
+        if (!foundMatchingCase
+            && !mayHaveSideEffects(firstChild)
+            && isUselessCase(cur, prev, defaultCase)) {
           removeCase(n, cur);
         } else {
           prev = cur;
         }
       }
 
-      // Optimize switches with constant condition
+      // Next, optimize switches with constant condition
       if (NodeUtil.isLiteralValue(cond, false)) {
         Node caseLabel;
         Tri caseMatches = Tri.TRUE;
@@ -632,6 +636,7 @@ class PeepholeRemoveDeadCode extends AbstractPeepholeOptimization {
       }
     }
 
+    // Last, try to remove the entire switch if possible
     return tryRemoveSwitch(n);
   }
 
@@ -743,23 +748,38 @@ class PeepholeRemoveDeadCode extends AbstractPeepholeOptimization {
     return true;
   }
 
+  private boolean isFirstSwitchMatch(boolean foundMatchingCase, Node condition, Node tag) {
+    if (foundMatchingCase) {
+      return false;
+    }
+    return PeepholeFoldConstants.evaluateComparison(this, Token.SHEQ, condition, tag) == Tri.TRUE;
+  }
+
+  private boolean areAllCaseTagsLiterals(Node switchBody) {
+    for (Node caseNode = switchBody.getFirstChild();
+        caseNode != null;
+        caseNode = caseNode.getNext()) {
+      if (caseNode.isDefaultCase()) {
+        continue;
+      }
+      Node caseTag = caseNode.getFirstChild();
+      if (!NodeUtil.isLiteralValue(caseTag, false)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /**
    * @return Whether the node is a control flow exit from the current block.
    */
   private static boolean isExit(Node n) {
-    switch (n.getToken()) {
-      case BREAK:
-      case CONTINUE:
-      case RETURN:
-      case THROW:
-        return true;
-      case SWITCH:
-        return isSwitchExit(n);
-      case TRY:
-        return isTryExit(n);
-      default:
-        return false;
-    }
+    return switch (n.getToken()) {
+      case BREAK, CONTINUE, RETURN, THROW -> true;
+      case SWITCH -> isSwitchExit(n);
+      case TRY -> isTryExit(n);
+      default -> false;
+    };
   }
 
   /**
